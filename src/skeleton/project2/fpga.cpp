@@ -37,12 +37,15 @@ void fpga_tb::fpga_allocate_resources()
 	ipt_vector_fix8 = new uint8_t[MATRIX_SIZE];
 
 	foo = open("/dev/mem", O_RDWR);
-	fpga_bram = (uint8_t*)mmap(NULL, MATRIX_SIZE*MATRIX_SIZE*sizeof(uint8_t), PROT_READ | PROT_WRITE, MAP_SHARED, foo, BRAM_BASE_ADDR);
-	fpga_bram_vector_io = (uint32_t*)mmap(NULL, MATRIX_SIZE*(sizeof(uint8_t) + sizeof(uint32_t)), PROT_READ | PROT_WRITE, MAP_SHARED, foo, BRAM_BASE_ADDR + 0x1000);
-	fpga_dma = (volatile unsigned int*)mmap(NULL, 16*sizeof(unsigned int), PROT_READ | PROT_WRITE, MAP_SHARED, foo, CDMA_ADDR);
 	fpga_ip = (volatile unsigned int*)mmap(NULL, sizeof(unsigned int), PROT_READ | PROT_WRITE, MAP_SHARED, foo, INSTRUCTION_ADDR);
+#ifdef	DMA
+	fpga_dma = (volatile unsigned int*)mmap(NULL, 16*sizeof(unsigned int), PROT_READ | PROT_WRITE, MAP_SHARED, foo, CDMA_ADDR);
 	dram_matrix = (uint8_t*)mmap(NULL, MATRIX_SIZE*MATRIX_SIZE*sizeof(uint8_t), PROT_READ | PROT_WRITE, MAP_SHARED, foo, NON_CACHEABLE_ADDR);
 	dram_vector = (uint8_t*)mmap(NULL, MATRIX_SIZE*sizeof(uint8_t), PROT_READ | PROT_WRITE, MAP_SHARED, foo, NON_CACHEABLE_ADDR + 0x1000);
+#else
+	fpga_bram = (uint8_t*)mmap(NULL, MATRIX_SIZE*MATRIX_SIZE*sizeof(uint8_t), PROT_READ | PROT_WRITE, MAP_SHARED, foo, BRAM_BASE_ADDR);
+#endif
+	fpga_bram_vector_io = (uint32_t*)mmap(NULL, MATRIX_SIZE*(sizeof(uint8_t) + sizeof(uint32_t)), PROT_READ | PROT_WRITE, MAP_SHARED, foo, BRAM_BASE_ADDR + 0x1000);
 }
 
 void fpga_tb::fpga_load_execute_and_copy(const uint16_t *ipt_matrix_fix16, const uint16_t *ipt_vector_fix16, uint32_t *your_vector_fix32)
@@ -62,22 +65,35 @@ void fpga_tb::fpga_load_execute_and_copy(const uint16_t *ipt_matrix_fix16, const
 
 	gettimeofday(&start, NULL);
 #endif
-	//Copy data to BRAM(or you may use DMA).
+#ifdef	DMA
+	//Copy data to non-cacheable area
 	memcpy(dram_matrix, ipt_matrix_fix8, MATRIX_SIZE*MATRIX_SIZE*sizeof(uint8_t));
 	memcpy(dram_vector, ipt_vector_fix8, MATRIX_SIZE*sizeof(uint8_t));
+#else
+	//Copy data to BRAM
+	memcpy(fpga_bram, ipt_matrix_fix8, MATRIX_SIZE*MATRIX_SIZE*sizeof(uint8_t));
+	memcpy(fpga_bram_vector_io, ipt_vector_fix8, MATRIX_SIZE*sizeof(uint8_t));
+#endif
 #ifdef ESTIMATE
 	gettimeofday(&end, NULL);
 	fpga_time = (double)(end.tv_sec - start.tv_sec) + ((double)(end.tv_usec - start.tv_usec)) / 1000000.0;
+#endif
+#if	defined(ESTIMATE) && defined(DMA)
 	printf("Time memcpy to NON-CACHEABLE AREA : %lf\n", fpga_time);
-
+#elif defined(ESTIMATE)
+	printf("Time memcpy to BRAM : %lf\n", fpga_time);
+#endif
+#if defined(ESTIMATE) && defined(DMA)
 	gettimeofday(&start, NULL);
 #endif
+#ifdef	DMA
 	*(fpga_dma+DMA_SRC_OFFSET) = NON_CACHEABLE_ADDR;
 	*(fpga_dma+DMA_DEST_OFFSET) = BRAM_BASE_ADDR;
 	*(fpga_dma+DMA_SIZE_OFFSET) = sizeof(uint8_t) * (MATRIX_SIZE * MATRIX_SIZE + MATRIX_SIZE);
 
 	while((*(fpga_dma+1) & 0x00000002) == 0);
-#ifdef ESTIMATE
+#endif
+#if defined(ESTIMATE) && defined(DMA)
 	gettimeofday(&end, NULL);
 	fpga_time = (double)(end.tv_sec - start.tv_sec) + ((double)(end.tv_usec - start.tv_usec)) / 1000000.0;
 	printf("Time for DMA : %lf\n", fpga_time);
@@ -109,12 +125,15 @@ void fpga_tb::fpga_load_execute_and_copy(const uint16_t *ipt_matrix_fix16, const
 void fpga_tb::fpga_cleanup()
 {
 	//Cleanup allocated resources.
-	munmap(fpga_bram, MATRIX_SIZE*MATRIX_SIZE*sizeof(uint8_t));
+#ifdef	DMA
 	munmap(dram_vector, MATRIX_SIZE*sizeof(uint8_t));
 	munmap(dram_matrix, MATRIX_SIZE*MATRIX_SIZE*sizeof(uint8_t));
-	munmap((void*)fpga_ip, sizeof(unsigned int));
 	munmap((void*)fpga_dma, 16*sizeof(unsigned int));
+#else
 	munmap(fpga_bram_vector_io, MATRIX_SIZE*(sizeof(uint8_t)+sizeof(uint32_t)));
+	munmap(fpga_bram, MATRIX_SIZE*MATRIX_SIZE*sizeof(uint8_t));
+#endif
+	munmap((void*)fpga_ip, sizeof(unsigned int));
 	close(foo);
 
 	delete [] ipt_matrix_fix8;

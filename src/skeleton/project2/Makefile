@@ -9,7 +9,7 @@ cxxobjs = $(cxxsrcs:.cpp=.o)
 cxxhdrs = zynq.h fpga.h
 
 #uncomment -DDEBUG to print values
-cxxflags = -std=c++14 -O2 -Wall -Werror -Wno-pointer-arith -DDEBUG -DESTIMATE
+cxxflags = -std=c++14 -O2 -Wall -Werror -Wno-pointer-arith -DDMA -DDEBUG -DESTIMATE
 
 csrcs = generator.c
 cobjs = $(csrcs:.c=.o)

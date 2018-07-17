@@ -24,13 +24,16 @@ private:
 	//Add your variables/functions here.
 	uint8_t* ipt_matrix_fix8;
 	uint8_t* ipt_vector_fix8;
-	uint8_t* fpga_bram;
-	uint32_t* fpga_bram_vector_io;
 	int foo;
-	volatile unsigned int* fpga_dma;
 	volatile unsigned int* fpga_ip;
+#ifdef	DMA
+	volatile unsigned int* fpga_dma;
 	uint8_t* dram_matrix;
 	uint8_t* dram_vector;
+#else
+	uint8_t* fpga_bram;
+#endif
+	uint32_t* fpga_bram_vector_io;
 
 	inline void fpga_trans_fix16_to_fix8(const uint16_t* ipt_matrix_fix16, const uint16_t* ipt_vector_fix16);
 };
